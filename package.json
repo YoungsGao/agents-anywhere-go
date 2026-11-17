@@ -1,0 +1,13 @@
+{
+  "name": "agents-anywhere-go-prd",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Protocol-compatible Go rewrite specification for Agents Anywhere",
+  "scripts": {
+    "sync": "node scripts/sync-spec.mjs",
+    "dev": "node scripts/serve.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
