@@ -16,21 +16,24 @@ async function core() {
   return import(coreUrl.href);
 }
 
-test('preserves all 61 unique requirements and the five module counts', () => {
+test('all IDs are unique and belong to a declared module', () => {
   const data = readData();
-  assert.equal(data.requirements.length, 61);
-  assert.equal(new Set(data.requirements.map(r => r.id)).size, 61);
-  assert.deepEqual(Object.fromEntries(data.modules.map(m => [m.id, data.requirements.filter(r => r.module === m.id).length])), {
-    baseline: 5, server: 23, connector: 22, deployment: 9, extension: 2,
-  });
+  const ids = new Set(data.requirements.map(r => r.id));
+  assert.equal(ids.size, data.requirements.length);
+  for (const r of data.requirements) {
+    assert.ok(data.modules.some(m => m.id === r.module && m.prefix === r.id[0]));
+  }
+  for (const group of [...data.protocols, ...data.failureCases]) {
+    for (const id of group.ids) assert.ok(ids.has(id), id);
+  }
 });
 
 test('every requirement keeps the exact title and acceptance criteria from the original specification', () => {
   const data = readData();
   assert.ok(existsSync(specUrl), '发布版本必须保留可下载的原始方案');
   const source = readFileSync(specUrl, 'utf8');
-  const lines = source.split(/\r?\n/).filter(line => /^\| [BSCDE]\d{2} \|/.test(line));
-  assert.equal(lines.length, 61);
+  const lines = source.split(/\r?\n/).filter(line => /^\| [BSPDE]\d{2} \|/.test(line));
+  assert.equal(lines.length, data.requirements.length);
   for (const line of lines) {
     const [id, phase, title, acceptance] = line.split('|').slice(1, -1).map(s => s.trim());
     const requirement = data.requirements.find(r => r.id === id);
@@ -42,10 +45,10 @@ test('every requirement keeps the exact title and acceptance criteria from the o
   }
 });
 
-test('module selection returns the 23 Server requirements', async () => {
+test('module selection returns the Server requirements', async () => {
   const { filterRequirements } = await core();
   const results = filterRequirements(readData().requirements, { module: 'server' });
-  assert.equal(results.length, 23);
+  assert.equal(results.length, readData().requirements.filter(r => r.module === 'server').length);
   assert.ok(results.every(r => r.id.startsWith('S')));
 });
 
@@ -58,9 +61,9 @@ test('search supports case-insensitive words across the requirement content', as
 
 test('module, milestone and search filters compose without losing acceptance content', async () => {
   const { filterRequirements } = await core();
-  const results = filterRequirements(readData().requirements, { module: 'connector', phase: 'M2', query: 'meshcall' });
-  assert.deepEqual(results.map(r => r.id), ['C05']);
-  assert.ok(filterRequirements(readData().requirements, { query: '检查点' }).some(r => r.id === 'C11'));
+  const results = filterRequirements(readData().requirements, { module: 'pi', phase: 'M2', query: 'ACP' });
+  assert.deepEqual(results.map(r => r.id), ['P01']);
+  assert.ok(filterRequirements(readData().requirements, { query: '检查点' }).some(r => r.id === 'P05'));
 });
 
 test('a milestone range includes its intermediate phases and M5 remains optional extensions', async () => {
@@ -73,6 +76,7 @@ test('a milestone range includes its intermediate phases and M5 remains optional
 
 test('requirement deep links retain the selected ID and invalid routes are safe', async () => {
   const { parseRoute } = await core();
+  assert.equal(parseRoute('#requirements/P01').requirementId, 'P01');
   assert.deepEqual(parseRoute('#requirements/S18'), { view: 'requirements', requirementId: 'S18' });
   assert.deepEqual(parseRoute('#architecture'), { view: 'architecture', requirementId: null });
   assert.deepEqual(parseRoute('#requirements/%3Cscript%3E'), { view: 'requirements', requirementId: null });
