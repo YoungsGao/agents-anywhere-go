@@ -1,38 +1,34 @@
-# Agents Anywhere Go
+# pi-audit-harness Connector 接入
 
-用 Go 重构 Server，使用 MySQL 持久化并通过 Docker Compose 部署到实验室。Pi Connector 使用 Python，其余 Connector 直接复用上游版本。当前交付为项目需求与验收方案。
+本仓库维护 [pi-audit-harness](https://github.com/YoungsGao/pi-audit-harness) 接入 Agents Anywhere Connector 的需求。目标是让原版手机 App 和 Web 通过上游 Server、Connector 查看和控制 Windows 执行机上的既有审计任务。
 
-- [在线 PRD](https://youngsgao.github.io/agents-anywhere-go/docs/prd/)
+- [在线需求](https://youngsgao.github.io/agents-anywhere-go/docs/prd/)
 - [需求清单](https://youngsgao.github.io/agents-anywhere-go/docs/prd/#requirements)
 - [完整 Markdown 方案](docs/prd/spec.md)
 
-## 文档网站
+## 项目范围
 
-静态 HTML、CSS 和 JavaScript，无需安装依赖或构建。各项需求由原始方案生成，支持关键词搜索、模块/阶段组合筛选、详情面板和需求独立链接。
+- 复用上游 Server、Connector、设备配对、远程会话与重连机制。
+- 验证 Connector 的 Runtime 扩展方式，并通过审计适配层调用 harness 已有的任务、授权、停止和恢复逻辑。
+- 保留一份由 harness 管理的任务、快照、原始证据、人工复核和报告。使用固定样例对照桌面和远程执行结果。
 
-需要 Node.js 20 或更新版本运行本地开发工具：
+## 实施阶段
 
-```sh
-npm run dev
-npm test
-```
+| 阶段 | 目标 |
+| --- | --- |
+| M0 | 固定版本，验证 Runtime 发现和只读探测 |
+| M1 | 接通本地业务服务，配对 Windows 执行机并读取现有任务 |
+| M2 | 验证授权后启动、停止、按原任务恢复和事件补读 |
+| M3 | 完成安装配置、隔离验证及原版手机、Web、桌面验收 |
 
-默认本地地址：`http://127.0.0.1:4173/docs/prd/`。
+## 本地预览
 
-更新内容时修改 `docs/prd/spec.md` 和 `scripts/sync-spec.mjs` 中的展示元数据，再执行：
+需要 Node.js 20 或更新版本。修改需求原文后运行下列命令。
 
 ```sh
 npm run sync
 npm test
+npm run dev
 ```
 
-GitHub Pages 使用 `main` 分支根目录发布，`.nojekyll` 保留 ES module 与静态数据。所有资源均为相对路径，不依赖外部字体、CDN 或 API。
-
-## 实施阶段
-
-- M0 · 原版基线。同一部手机连上原 Server，能操作原 Connector；记录 Pi 的依赖与基线差异。
-- M1 · Go Server 可用版。手机通过 Go Server 续聊、查看输出；重启后历史可读，重复摄取可验证。
-- M2 · Pi Python 接入。原手机和 Web 可在 Go Server 选择 Pi；其他原版 Runtime 仍可照常使用。
-- M3 · 工作区与故障恢复。运行两个账号的隔离测试，重建容器并恢复一次真实会话。
-- M4 · 服务端兼容覆盖。每项服务端支持声明有客户端或协议测试记录。
-- M5 · MQ 学习增强。重复投递与失败重试可恢复。
+本地地址为 `http://127.0.0.1:4173/docs/prd/`。GitHub Pages 从 `main` 分支根目录发布。

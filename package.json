@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Protocol-compatible Go rewrite specification for Agents Anywhere",
+  "description": "Requirements for connecting pi-audit-harness to Agents Anywhere",
   "scripts": {
     "sync": "node scripts/sync-spec.mjs",
     "dev": "node scripts/serve.mjs",

@@ -1,124 +1,79 @@
-# Agents Anywhere Go 项目需求
+# pi-audit-harness Connector 接入需求
 
-PRD v1.1 · 2026-11-18 · 规划稿
+PRD v1.3 · 2026-11-19 · 规划稿
 
-## 目标与职责
+## 目标
 
-用户通过原版手机或 Web 连接实验室服务，选择设备和 Agent，继续会话、查看输出、回复审批。Go 重构范围为 Server。执行侧新增 Python 编写的 Pi Connector；DSH、Codex、Claude 和其他已支持的 Connector / Provider 均直接复用上游版本。功能按冻结组合的实际能力验收。
+让原版 Agents Anywhere 手机 App 和 Web 通过上游 Connector 查看、启动及停止 Windows 执行机上的 `pi-audit-harness` 防御性源码审计任务。桌面应用继续负责项目导入、审计配置、发送范围授权、原始证据、人工复核和报告导出。首轮验收使用上游 Server 和原版客户端。
 
-| 维护对象 | 职责与技术 |
+## 接入边界
+
+| 组件 | 职责 |
 | --- | --- |
-| Go Server | Gin 接 HTTP/WebSocket，Service 编排操作，GORM 与显式 SQL 访问 MySQL。独立 DTO 保留字段缺省、null、分页、错误及整数精度。 |
-| Pi Python Connector | 在上游 Python Connector 框架中提供 Pi 专用接入与实验室配置，复用现有 PiProvider、ACP stdio 与设备通道。M0 记录可复用项与待补差异，M2 交付 Python 接入入口、依赖说明与集成验证。 |
-| 其他执行端 | 直接安装冻结版本，沿用原启动器、插件、凭据、设备协议和同步文件。服务端兼容问题由 Go Server 处理。 |
-| 实验室部署 | Docker Compose 运行 Server、MySQL 与所需 Redis。执行端部署在能访问 Agent 和工作目录的主机。可与 Server 同机，也可从个人工作站主动连接。 |
+| Agents Anywhere App / Web / Server | 登录、设备配对、远程入口、会话控制、状态展示及连接恢复。 |
+| 上游 Connector | 复用设备协议、认证、RPC、摄取、心跳和重连。通过可验证的 Runtime 扩展入口将请求转给审计适配层。 |
+| 审计适配层 | 连接上游 Runtime 契约和 harness 已有业务入口，映射任务、能力、受控命令及允许同步的事件。扩展方式以 M0 的版本兼容验证为准。 |
+| pi-audit-harness | 使用其现有 Pi SDK、模型配置、授权、任务队列、预算、SQLite、事件和报告，作为审计任务的事实来源。 |
 
-## 协议与数据
+上游 PiProvider 面向通用 Pi Agent 会话。项目需要验证 Connector 发起的请求确实进入 harness 的任务生命周期，并能在桌面工作台查到同一个任务。当前参考的 harness 源码使用嵌入式 Pi SDK 与本地业务服务，具体扩展接口以冻结源码和联调结果为准。
 
-原手机 / Web → HTTPS / WSS → Go Server → 已认证设备连接 → Python Connector → 选定 Runtime。Pi 通过 Python ACP 客户端调用 Pi 适配器；DSH 使用原版 Bridge。数据库仅供 Server 使用。
+`原版 App / Web → 上游 Server ↔ 上游 Connector → 审计适配层 → pi-audit-harness 本地服务`
 
-保持客户端 API v2、设备认证/摄取/WebSocket、RPC 信封、Timeline、审批和恢复语义。MySQL 保存账号、设备、会话、Timeline 和回执，版本化 SQL 迁移处理唯一约束、时间精度和事务顺序。Redis 承担票据和跨实例协调。设备连接归属和当前审批状态分别由在线连接与 Runtime 确认。附件使用持久卷。原 Server 参考实例使用独立 PostgreSQL 数据库。
+Connector 与 harness 在可访问该工作区的同一 Windows 执行机运行。服务端负责远程通道，业务数据和模型凭据由 harness 保存。首轮使用公开或合成样例验证编码后的状态与事件。额外的源码、证据或附件共享按用户授权范围验收。
 
 ## 实施阶段
 
 | 阶段 | 工作 | 验收出口 |
 | --- | --- | --- |
-| M0 原版基线 | 固定可用客户端和执行环境，记录续聊、新建、审批、断线的真实调用。 | 同一部手机连上原 Server，能操作原 Connector；记录 Pi 的依赖与基线差异。 |
-| M1 Go Server 可用版 | 实现认证、会话、设备 RPC、Timeline、MySQL 迁移及 Docker 部署。 | 手机通过 Go Server 续聊、查看输出；重启后历史可读，重复摄取可验证。 |
-| M2 Pi Python 接入 | 接入真实 Pi，在固定工作目录验证发现、创建、续聊、中断和事件回传。 | 原手机和 Web 可在 Go Server 选择 Pi；其他原版 Runtime 仍可照常使用。 |
-| M3 工作区与故障恢复 | 补齐服务端文件、终端转发、附件和队列；验证重连、重启及恢复。 | 运行两个账号的隔离测试，重建容器并恢复一次真实会话。 |
-| M4 服务端兼容覆盖 | 补齐冻结基线内的配置、计划与目标、管理统计和分享接口。 | 每项服务端支持声明有客户端或协议测试记录。 |
-| M5 MQ 学习增强 | 为已存在的统计或附件任务增加 Outbox、RabbitMQ 和幂等消费。 | 重复投递与失败重试可恢复。 |
+| M0 现状与接口基线 | 固定两端版本，核对 harness 的运行和授权入口，验证上游 Runtime 扩展方式 | 本地审计基线可复现，Connector 能发现测试实例并通过一次只读状态探测 |
+| M1 本机适配与配对 | 接通 Windows 本地服务，完成配对、任务身份映射、能力与状态同步 | 手机与 Web 发现 harness 实例，可读取准备好的测试任务及进度 |
+| M2 远程审计与恢复 | 接入授权后启动、停止、受控恢复和事件回放 | 手机发起一个本地预授权样例，桌面看到同一任务，断网后按原进度补读 |
+| M3 真机与部署验收 | 验证安装配置、隔离、审计报告一致性与桌面回归 | 原版手机和 Web 通过端到端测试，交付可复现的安装配置说明和脱敏记录 |
 
-## 基线与兼容
+## 基线与契约
 
 | ID | 阶段 | 需求 | 验收标准 |
 | --- | --- | --- | --- |
-| B01 | M0 | 冻结实验室兼容组合 | 记录手机 OS/App 构建号、Web、Server、Python Connector、DSH 插件、Pi/ACP 依赖及执行机系统；原版链路各跑一次 |
-| B02 | M0 | 建立协议覆盖清单 | 收录有效 HTTP 路由、WebSocket、RPC 方法、通知、Schema、错误码和调用方，注明来源与实现状态 |
-| B03 | M0–M4 | 建立兼容 fixtures | 覆盖正常/失败响应、null/缺省、分页、ID、时间、整数精度与流事件；动态 token/时间按约定比较 |
-| B04 | M0–M4 | 按执行场景交叉联调 | 对照原 Server 与 Go Server 使用独立数据库；分别记录上游 Connector 和 Pi Python 接入的版本、场景、结果和差异 |
+| B01 | M0 | 冻结上游与 harness 组合 | 记录两端提交、Windows、Node、Pi SDK、Connector 依赖、手机 App 与 Web 版本，保留一条原版连接基线 |
+| B02 | M0–M1 | 核对 Runtime 扩展和本地业务接口 | 验证冻结版 Connector 能加载适配层，可发现实例并执行只读状态查询。记录实际 Runtime、RPC、任务和事件契约 |
+| B03 | M0–M3 | 建立兼容样例 | 保存脱敏的发现、任务、事件和错误样例，覆盖字段缺省、重复事件、权限失败、断线与恢复 |
+| B04 | M0–M3 | 固定同一审计样例作对照 | 用同一公开或合成快照比较桌面直接运行和 Connector 发起的结果，记录任务 ID、状态、过程事件、人工复核与报告的一致性 |
 
-## Go Server
-
-| ID | 阶段 | 需求 | 验收标准 |
-| --- | --- | --- | --- |
-| S01 | M1 | HTTP 与健康入口 | 保留基线路径、方法、状态码、错误结构和健康响应；原插件服务探测通过 |
-| S02 | M1 | 用户、登录与权限 | 完成基线登录/退出和必要管理员初始化；所有资源按用户权限校验，错误行为与原客户端兼容 |
-| S03 | M1 | 插件 OAuth 授权 | 兼容授权页、state、PKCE、一次性授权码和回环回调；取消、过期、重复兑换有明确结果 |
-| S04 | M1 | 手机登录/配对 | 实现基线手机登录、扫码/确认和过期流程；凭据不会被错误重复消费 |
-| S05 | M1 | 设备与凭据管理 | 支持设备注册、复用、token 轮换/撤销、删除、偏好和设备设置；已有配对不会无故生成新设备 |
-| S06 | M1 | Connector 接入通道 | 兼容 auth、ingest、ws、握手、心跳、通知、连接替换和待处理 RPC 清理 |
-| S07 | M1 | RPC 转发与隔离 | 通过 request ID 关联响应；超时或单次调用失败不关闭其他正常请求；禁止跨用户设备操作 |
-| S08 | M1–M3 | Runtime 管理 | 兼容发现、实例身份、配置校验、启动/停止、模型/权限目录、配置选择和命令目录；能力按实际状态返回 |
-| S09 | M1 | 项目和会话 | 兼容列表、详情、分页、项目绑定、已读、归档、恢复和基线要求的批量操作 |
-| S10 | M1–M3 | Timeline 摄取与排序 | 同一源条目重复上报不会产生重复；ID 和 revision 稳定；并发/重启后 seq 不复用，历史不被旧数据覆盖；MySQL 提交后丢 ACK，重传同一批次并重启，按游标补读与对照实例一致 |
-| S11 | M1–M3 | 快照、实时事件与恢复 | 兼容 session/dashboard WebSocket、ticket、snapshot、events 游标及基线事件类型；断线补齐后顺序正确 |
-| S12 | M1–M3 | RuntimeLive 与有效能力 | 当前状态、能力、notice、选择项从 Runtime 读取或按基线缓存降级；历史数据不冒充当前可执行状态 |
-| S13 | M1–M3 | 审批与用户输入 | 转发批准、拒绝和输入，校验当前 notice 与权限；过期、重复和双端操作结果符合基线 |
-| S14 | M3 | 会话消息队列 | 保留队列顺序、编辑、撤回、重试、立即发送、暂停/恢复等行为；派发状态不明按基线处理，不盲目重发 |
-| S15 | M1–M4 | Runtime 工作流 | 兼容基线异步会话创建、恢复、配置切换及 operationId/switchRevision 等 fence 语义；按 M0 录制链路优先实现真机新建会话所调用的准备和创建接口 |
-| S16 | M3 | 附件与文件服务 | 兼容上传/下载、预览、文件票据与传输流程；超大文件、取消、越权和失效票据有一致结果 |
-| S17 | M3 | Shell 与终端转发 | 实现基线执行、后台任务与终端路由，保留流帧、退出状态、尺寸变更和连接生命周期 |
-| S18 | M1–M4 | GORM/MySQL 持久化 | 核对所有适用模型、唯一约束、排序、JSON、时间与事务；使用版本迁移，MySQL 并发测试通过 |
-| S19 | M1–M3 | Redis 协调 | 维护在线租约、连接所属实例、RPC 路由和短期票据；租约过期后旧实例不能继续作为有效所有者 |
-| S20 | M3–M4 | Plan 与 Goal | 适用 Runtime 的计划文档、模式切换、审阅、目标状态和操作回执与基线兼容，旧 revision 不能覆盖新状态 |
-| S21 | M3–M4 | 模型配置与渠道同步 | 兼容基线模型 profile、实例分配、连接测试、切换/恢复、相关链接与回调；响应不泄露密钥 |
-| S22 | M4 | 管理、统计、分享和公告 | 覆盖冻结基线中适用的管理员、使用统计、会话分享、实例设置与公告接口，原页面可正常使用 |
-| S23 | M1–M4 | 原 Web 与公开地址 | 同源 Web/API 和插件登录路由可用，反向代理后 origin、回调、CORS、文件及 WebSocket 地址正确 |
-| S24 | M1 | 发送、流式回复与中断 | 原手机向已有会话发消息，观察流式输出并中断；已下发但应答丢失时核对状态，避免重复执行 |
-
-## Pi Python Connector
+## Connector 接入
 
 | ID | 阶段 | 需求 | 验收标准 |
 | --- | --- | --- | --- |
-| P01 | M0–M2 | Pi Python Connector 交付边界 | 在 Python 中实现 Pi 专用接入，复用上游设备认证、心跳、RPC、摄取及 PiProvider/ACP 能力；列出自有模块、上游依赖版本及启动入口 |
-| P02 | M2 | Pi 实例注册与配置 | 原客户端识别 runtimeType=pi，按实例区分 runtimeId；在固定工作目录发现 Pi，依赖或凭据缺失返回明确原因，日志隐藏密钥 |
-| P03 | M2 | Pi 会话执行 | 通过真实 Pi 创建及续聊会话、回传流式事件、按实际能力中断；手机重开后能读取同一会话历史 |
-| P04 | M2 | Pi 能力与交互 | 按实例报告支持的能力；对于支持的输入或审批，答复交给对应会话，失效请求可识别；不支持的操作在客户端保持不可用 |
-| P05 | M2–M3 | Pi 断线与检查点 | 提交后丢失 ACK 可安全重传；断开执行机网络再恢复，已接收事件可补读，未知结果的操作先核对，避免重复启动回合 |
-| P06 | M2–M3 | Pi 与其他 Runtime 共存 | 同一账号下分别选择 Pi 和未经修改的 DSH 或 Codex 创建会话；设备身份、项目目录、消息和凭据互不串用 |
+| C01 | M1 | 沿用上游配对及设备凭据 | 原版 App 和 Web 可见已配对的 Windows 执行机，重复启动沿用设备身份，撤销凭据后执行权限及时失效 |
+| C02 | M0–M1 | 暴露可辨识的审计 Runtime 实例 | 原版客户端可按稳定实例标识识别 pi-audit-harness；实例重启后身份保持一致，并与通用 Pi Runtime 区分 |
+| C03 | M1–M2 | 复用 Runtime 控制通道 | 支持状态查询和已授权的审计操作。超时、重复请求、离线和不支持的操作有明确结果，能够按 request ID 对照 |
+| C04 | M1–M2 | 映射稳定的远程会话 | 每条远程会话关联唯一的本地项目、快照与任务，重复打开和重连仍关联原任务 |
+| C05 | M1–M3 | 转发经授权的任务状态与事件 | 手机和 Web 能看到任务进度、阶段和可操作状态。通过版本化映射同步必要摘要，原始审计记录继续在 harness 内复核 |
 
-## 实验室部署与质量
-
-| ID | 阶段 | 需求 | 验收标准 |
-| --- | --- | --- | --- |
-| D01 | M1–M2 | 实验室 Docker Compose | 构建 Go Server 镜像并固定 MySQL 与执行端依赖；全新环境按文档启动后原手机可访问 Server，Pi 依赖在执行机可用 |
-| D02 | M0–M2 | 验证执行环境 | 实验室或个人工作站的原 Connector 能访问项目目录和对应 Runtime；在指定目录完成 DSH 与 Pi 实测，记录各自拓扑 |
-| D03 | M1–M3 | HTTPS 与反向代理 | 手机和执行设备能访问实验室域名；WebSocket Upgrade、长连接、上传限制和 OAuth origin 配置通过实测 |
-| D04 | M1–M3 | 持久化和秘密配置 | MySQL、文件、Connector 状态和 DSH 数据有明确卷；重建容器不丢绑定/检查点；凭据不写入镜像 |
-| D05 | M1–M3 | 服务生命周期 | 分别中断 Server、网络及执行进程；健康检查、连接替换、待处理 RPC 清理和恢复后的能力状态可观察 |
-| D06 | M1–M3 | 日志和指标 | 能按 connectorId/runtimeId/sessionId/requestId 定位问题；记录连接、RPC 延迟、同步积压和错误，默认不记录敏感正文 |
-| D07 | M1–M4 | 备份与恢复 | 恢复 MySQL、文件和 Connector 状态后能继续使用；升级和回退使用匹配的数据/schema，不混写两个实现的数据库；首次承载真实实验室数据前演练一次卷恢复 |
-| D08 | M2–M4 | 故障与压力验证 | 注入网络、进程、MySQL、Redis、重复事件和慢消费者故障；无无限增长队列、重复副作用或伪成功状态 |
-| D09 | M1–M4 | 自动化兼容验证 | Schema/fixture、HTTP/WS/MeshCall 集成、真实 MySQL、并发检查和原版手机 E2E 各有记录；仅 mock 通过不能认定远程可用 |
-
-## 可选 MQ 增强
+## 审计工作流
 
 | ID | 阶段 | 需求 | 验收标准 |
 | --- | --- | --- | --- |
-| E01 | M5 | 使用统计异步聚合 | MySQL Outbox 投递 RabbitMQ，消费者按 eventId 幂等更新聚合结果；MQ 重启和重复投递后结果正确 |
-| E02 | M5 | 附件后处理或归档 | 为缩略图/归档选择一种真实任务，加入有限重试、死信和人工重放；不改变原版远程控制协议 |
+| P01 | M1–M2 | 调用现有审计任务入口 | 远程启动固定样例后，桌面出现同一 runId，并使用相同快照、模板、模型配置和审计逻辑 |
+| P02 | M2 | 启动前检查本地发送授权 | 远程只能启动已准备且已有适用授权的任务。授权缺失或范围变化时明确提示桌面确认，确认前模型调用计数为零 |
+| P03 | M2 | 保留现有预算和停止语义 | 手机停止可达本地任务并保留已提交结果。预算耗尽、失败及用户停止分别呈现真实状态 |
+| P04 | M2–M3 | 恢复原任务和事件 | 相同 runId 的任务可按现有恢复条件继续。断线后的事件按游标补读，进度、累计预算和报告关联保留 |
+| P05 | M2–M3 | 防止重复启动和结果串用 | 重试或双端同时操作同一请求只启动一次；不同设备、项目、快照及任务之间隔离数据和操作 |
+| P06 | M2–M3 | 保留报告与人工复核入口 | 桌面能定位远程任务的已有证据、独立人工复核结论和报告，原版客户端显示获准的状态和摘要 |
 
-## 联调验收
+## 部署与验收
 
-| 阶段 | 组合 | 证据 |
-| --- | --- | --- |
-| M0 | 原 Server + 原 Connector | 录制原手机和 Web 的调用与恢复样例，保存脱敏后的请求和事件。 |
-| M1 | Go Server + 原 Connector | 同场景比较历史、登录、权限、续聊、流式输出与重启后的游标。 |
-| M2 | Go Server + Python Pi Connector | 实机执行 Pi 任务，保留实例身份、会话 ID、输出、退出和恢复记录。 |
-| M3–M4 | Go Server + Pi 与其他原版执行端 | 验证共存、丢 ACK、迟到响应、双端审批、越权与数据库恢复。 |
+| ID | 阶段 | 需求 | 验收标准 |
+| --- | --- | --- | --- |
+| D01 | M1–M3 | 安装和配置 Windows 执行机 | 两个组件按固定版本安装，Connector 通过受认证的本地接口访问 harness。退出、重启和凭据失效的行为可复核 |
+| D02 | M2–M3 | 真机与 Web 端到端回归 | 使用固定样例完成配对、查看、授权后启动、停止或恢复，并用桌面直接运行结果作对照 |
+| D03 | M2–M3 | 故障验证 | 分别中断手机网络、Connector 和本地服务，核对任务状态、游标、数据持久化和重复操作结果 |
+| D04 | M1–M3 | 资源与权限隔离 | 验证无权限设备、未授权任务和无关文件无法访问。沿用 harness 的只读取证和发送范围设置，凭据与未授权内容留在执行机 |
+| D05 | M3 | 交付运行记录和配置说明 | 提供安装、配对、状态诊断、退出和恢复文档。记录版本、执行拓扑、验收结果和已知限制 |
 
-原版手机构建、上游提交、容器版本和验证日期随结果一起保存。规划阶段的需求统一标为待实现。
+## 需求来源
 
-## 来源
-
-- [Agents Anywhere 源码快照](https://github.com/anywhere-labs/Agents-Anywhere/tree/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008)
-- [Connector README](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/connector/README.md)
-- [Server Architecture](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/docs/server-architecture.md)
-- [API 索引](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/docs/api/README.md)
-- [实时 API](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/docs/api/realtime.md)
-- [DSH Bridge 2.0](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/contracts/dsh-bridge/2.0/README.md)
-- [本机 Connector 记录 v2](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/contracts/local-machine/2.0/README.md)
-- [Runtime Control 2.1](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/contracts/runtime-control/2.1/README.md)
-- [上游 Python ACP 与 Pi 实现](https://github.com/anywhere-labs/Agents-Anywhere/blob/856026d/docs/runtime-protocol/acp-runtime-implementation.md)
+- [pi-audit-harness 入口与现有能力](https://github.com/YoungsGao/pi-audit-harness)
+- [harness 本地业务服务](https://github.com/YoungsGao/pi-audit-harness/blob/23a0e964128ba199211b4dd6c446acdac6e24a55/desktop/src/service/http-server.ts)
+- [harness Pi SDK 会话入口](https://github.com/YoungsGao/pi-audit-harness/blob/23a0e964128ba199211b4dd6c446acdac6e24a55/desktop/src/service/pi-session-factory.ts)
+- [上游 Connector 使用说明](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/connector/README.md)
+- [上游 ACP 与 Runtime 扩展](https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/connector/connector/runtimes/acp/README.md)

@@ -24,7 +24,7 @@ export function parseRoute(hash) {
   catch { route = ''; }
   const [requestedView, requestedId] = route.split('/');
   const view = views.includes(requestedView) ? requestedView : 'overview';
-  const requirementId = view === 'requirements' && /^[BSPDE]\d{2}$/.test(requestedId || '') ? requestedId : null;
+  const requirementId = view === 'requirements' && /^[BCPD]\d{2}$/.test(requestedId || '') ? requestedId : null;
   return { view, requirementId };
 }
 
