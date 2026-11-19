@@ -2,106 +2,342 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
 const source = await readFile(new URL('docs/prd/spec.md', root), 'utf8');
-const lines = source.split(/\r?\n/);
-const [, version, updated] = source.match(/^(PRD v\d+\.\d+) · (\d{4}-\d{2}-\d{2})/m);
-const repository = 'https://github.com/YoungsGao/agents-anywhere-go';
-const target = 'https://github.com/YoungsGao/pi-audit-harness';
-const targetSnapshot = '23a0e964128ba199211b4dd6c446acdac6e24a55';
-const upstream = 'https://github.com/anywhere-labs/Agents-Anywhere';
-const snapshot = '98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008';
-const upstreamFiles = upstream + '/blob/' + snapshot;
-
 const modules = [
   {
-    id: 'baseline', prefix: 'B', name: '基线与契约', english: 'BASELINE & CONTRACTS',
-    icon: 'layers', description: '固定版本、扩展接口和可对照的审计样例。',
-    emphasis: '验证请求进入 harness 已有业务服务。'
+    "id": "baseline",
+    "prefix": "B",
+    "name": "基线与兼容",
+    "english": "BASELINE & CONTRACTS",
+    "short": "基线",
+    "icon": "layers",
+    "description": "冻结原版组合，建立协议清单、样例与交叉联调基线。",
+    "emphasis": "先确认我们要兼容什么。"
   },
   {
-    id: 'connector', prefix: 'C', name: 'Connector 接入', english: 'CONNECTOR INTEGRATION',
-    icon: 'network', description: '复用上游设备通道，映射审计实例、任务和事件。',
-    emphasis: '设备和会话身份在重连前后保持可追踪。'
+    "id": "server",
+    "prefix": "S",
+    "name": "Go Server",
+    "english": "CONTROL PLANE",
+    "short": "Server",
+    "icon": "server",
+    "description": "用 Gin＋GORM 实现认证、设备、会话、事件和 RPC 转发。",
+    "emphasis": "手机与插件填写的实验室服务地址。"
   },
   {
-    id: 'harness', prefix: 'P', name: '审计工作流', english: 'AUDIT WORKFLOW',
-    icon: 'terminal', description: '用现有授权、任务、预算、恢复和复核逻辑执行审计。',
-    emphasis: '桌面和远程端共享同一个本地审计任务。'
+    "id": "pi",
+    "prefix": "P",
+    "name": "Pi Python Connector",
+    "english": "PI CONNECTOR",
+    "short": "Pi",
+    "icon": "terminal",
+    "description": "用 Python 接入 Pi，复用原有设备协议与 ACP 能力。",
+    "emphasis": "Pi 与原版 Runtime 可在同一个实验室工作流中选择。"
   },
   {
-    id: 'deployment', prefix: 'D', name: '部署与验收', english: 'DEPLOYMENT & VALIDATION',
-    icon: 'box', description: '验证 Windows 执行环境、隔离、故障和真实设备。',
-    emphasis: '使用公开或合成样例进行端到端对照。'
+    "id": "deployment",
+    "prefix": "D",
+    "name": "部署与质量",
+    "english": "DELIVERY & RELIABILITY",
+    "short": "部署",
+    "icon": "box",
+    "description": "实验室 Docker 部署、持久化与恢复验证。",
+    "emphasis": "真实手机可用，才算完成远程链路。"
+  },
+  {
+    "id": "extension",
+    "prefix": "E",
+    "name": "MQ 学习增强",
+    "english": "OPTIONAL EXTENSIONS",
+    "short": "增强",
+    "icon": "queue",
+    "description": "用 RabbitMQ 演练统计聚合、Outbox、幂等与死信处理。",
+    "emphasis": "可选扩展，独立验收。"
   }
 ];
 
-const phaseDetails = {
-  M0: { label: '现状与契约', deliverables: ['版本与接口基线', 'Runtime 发现和只读探测'], dependency: '项目起点' },
-  M1: { label: '本机接通', deliverables: ['Connector 配对', '桌面任务与远程会话映射'], dependency: 'M0 阶段出口' },
-  M2: { label: '远程任务', deliverables: ['受授权启动与停止', '同一任务恢复和事件回放'], dependency: 'M1 阶段出口' },
-  M3: { label: '交付验收', deliverables: ['安装与配置说明', '手机、Web 和桌面对照记录'], dependency: 'M2 阶段出口' }
-};
-
-const fields = line => line.split('|').slice(1, -1).map(value => value.trim());
-const requirements = lines.filter(line => /^\| [BCPD]\d{2} \|/.test(line)).map(line => {
-  const [id, phase, title, acceptance] = fields(line);
+const requirements = source.split(/\r?\n/).filter(line => /^\| [BSPDE]\d{2} \|/.test(line)).map(line => {
+  const [id, phase, title, acceptance] = line.split('|').slice(1, -1).map(value => value.trim());
   const module = modules.find(item => item.prefix === id[0]).id;
-  return { id, module, phase, title, acceptance, status: 'planned' };
+  return { id, module, phase, title, acceptance, status: 'planned', optional: module === 'extension' };
 });
+
 if (!requirements.length || new Set(requirements.map(r => r.id)).size !== requirements.length) {
   throw new Error('The specification must contain unique requirement IDs.');
 }
 
-const phases = lines.filter(line => /^\| M\d /.test(line)).map(line => {
-  const [heading, description, exit] = fields(line);
-  const [id, ...words] = heading.split(' ');
-  return { id, title: words.join(' '), description, exit, ...phaseDetails[id] };
-});
-
 const data = {
-  title: 'pi-audit-harness Connector 接入需求',
-  version, updated, baseline: snapshot.slice(0, 7), repository, target, upstream,
-  sourceSnapshot: upstream + '/tree/' + snapshot,
-  modules, requirements, phases,
+  title: "Agents Anywhere · Go Rewrite",
+  version: "PRD v1.1",
+  updated: "2026-11-18",
+  baseline: "98dd0e6",
+  repository: "https://github.com/YoungsGao/agents-anywhere-go",
+  reference: "https://youngsgao.github.io/pi-audit-harness/docs/prd/index.html#requirements",
+  upstream: "https://github.com/anywhere-labs/Agents-Anywhere",
+  sourceSnapshot: "https://github.com/anywhere-labs/Agents-Anywhere/tree/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008",
+  modules,
+  requirements,
+  phases: [
+    {
+      "id": "M0",
+      "title": "原版基线",
+      "label": "原版先跑通",
+      "description": "固定可用客户端和执行环境，记录续聊、新建、审批、断线的真实调用。",
+      "exit": "同一部手机连上原 Server，能操作原 Connector；记录 Pi 的依赖与基线差异。",
+      "deliverables": [
+        "原版基线验收记录",
+        "原 Server ＋ 上游 Python Connector"
+      ],
+      "dependency": "项目起点",
+      "pair": "原 Server ＋ 上游 Python Connector"
+    },
+    {
+      "id": "M1",
+      "title": "Go Server 可用版",
+      "label": "服务端首发",
+      "description": "实现认证、会话、设备 RPC、Timeline、MySQL 迁移及 Docker 部署。",
+      "exit": "手机通过 Go Server 续聊、查看输出；重启后历史可读，重复摄取可验证。",
+      "deliverables": [
+        "Go Server 可用版验收记录",
+        "Go Server ＋ 上游 Python Connector"
+      ],
+      "dependency": "M0 阶段出口",
+      "pair": "Go Server ＋ 上游 Python Connector"
+    },
+    {
+      "id": "M2",
+      "title": "Pi Python 接入",
+      "label": "Pi 专项",
+      "description": "接入真实 Pi，在固定工作目录验证发现、创建、续聊、中断和事件回传。",
+      "exit": "原手机和 Web 可在 Go Server 选择 Pi；其他原版 Runtime 仍可照常使用。",
+      "deliverables": [
+        "Pi Python 接入验收记录",
+        "Go Server ＋ Pi Python Connector"
+      ],
+      "dependency": "M1 阶段出口",
+      "pair": "Go Server ＋ Pi Python Connector"
+    },
+    {
+      "id": "M3",
+      "title": "工作区与故障恢复",
+      "label": "实验室验收",
+      "description": "补齐服务端文件、终端转发、附件和队列；验证重连、重启及恢复。",
+      "exit": "运行两个账号的隔离测试，重建容器并恢复一次真实会话。",
+      "deliverables": [
+        "工作区与故障恢复验收记录",
+        "Go Server ＋ Pi / 原 Connector"
+      ],
+      "dependency": "M2 阶段出口",
+      "pair": "Go Server ＋ Pi / 原 Connector"
+    },
+    {
+      "id": "M4",
+      "title": "服务端兼容覆盖",
+      "label": "扩展 API",
+      "description": "补齐冻结基线内的配置、计划与目标、管理统计和分享接口。",
+      "exit": "每项服务端支持声明有客户端或协议测试记录。",
+      "deliverables": [
+        "服务端兼容覆盖验收记录",
+        "原客户端与原 Connector 回归"
+      ],
+      "dependency": "M3 阶段出口",
+      "pair": "原客户端与原 Connector 回归"
+    },
+    {
+      "id": "M5",
+      "title": "MQ 学习增强",
+      "label": "可选迭代",
+      "description": "为已存在的统计或附件任务增加 Outbox、RabbitMQ 和幂等消费。",
+      "exit": "重复投递与失败重试可恢复。",
+      "deliverables": [
+        "MQ 学习增强验收记录",
+        "可选异步任务"
+      ],
+      "dependency": "M4 阶段出口",
+      "pair": "可选异步任务",
+      "optional": true
+    }
+  ],
   boundaries: [
-    { title: '上游通道', text: '使用原版 App、Web、Server 和 Connector 完成登录、配对、发现、RPC 与实时传输。' },
-    { title: '审计适配', text: '验证 Runtime 扩展入口，映射审计任务、能力、控制操作和经授权可同步的事件。' },
-    { title: '现有业务服务', text: 'pi-audit-harness 管理快照、发送授权、任务、预算、原始证据、复核和报告。' }
+    {
+      "title": "Go 重构范围",
+      "text": "Server 负责协议、RPC、持久化和实时事件。"
+    },
+    {
+      "title": "Pi Python Connector",
+      "text": "在上游 Python 执行框架中接入 Pi，依赖及差异按版本记录。"
+    },
+    {
+      "title": "直接复用其他执行端",
+      "text": "原客户端、DSH 插件及其他上游 Connector 使用配套发行版本。"
+    }
   ],
   protocols: [
     {
-      title: '原版客户端 ↔ 上游 Server', tag: 'HTTP / WebSocket',
-      paths: ['/api/v2/connectors', '/api/v2/sessions/*', '/api/v2/ws-ticket'],
-      text: '用原版 App 与 Web 检验设备发现、任务状态和会话重连。',
-      ids: ['B01', 'C01', 'D02']
+      "title": "客户端 ↔ Server",
+      "tag": "HTTP / WebSocket",
+      "paths": [
+        "/api/v2/auth/*",
+        "/api/v2/oauth/*",
+        "/api/v2/connectors",
+        "/api/v2/sessions/*",
+        "/api/v2/ws-ticket"
+      ],
+      "text": "兼容原路径、方法、认证、状态码、JSON 形状、分页、文件流和实时事件。Gin 的错误映射遵循原客户端约定。",
+      "ids": [
+        "B02",
+        "S01",
+        "S03",
+        "S11"
+      ]
     },
     {
-      title: '上游 Server ↔ Connector', tag: 'AUTH / INGEST / RPC',
-      paths: ['/api/v2/connector/auth', '/api/v2/connector/ingest', '/api/v2/connector/ws'],
-      text: '复用登录、设备身份、请求信封和重连。核对允许远程执行的 Runtime 能力。',
-      ids: ['B02', 'C02', 'C03']
+      "title": "Server ↔ Connector",
+      "tag": "AUTH / INGEST / RPC",
+      "paths": [
+        "/api/v2/connector/auth",
+        "/api/v2/connector/ingest",
+        "/api/v2/connector/ws"
+      ],
+      "text": "保留握手、请求与通知信封、request ID、错误、超时及 runtimeType / runtimeId 身份。旧连接的迟到响应不能覆盖新状态。",
+      "ids": [
+        "S06",
+        "S07",
+        "P02"
+      ]
     },
     {
-      title: '审计适配层 ↔ harness', tag: 'LOCAL SERVICE / EVENTS',
-      paths: ['RuntimeProvider', '任务 API', '持久化事件'],
-      text: '复用现有业务授权和任务生命周期，建立可对照的本地任务与远程会话映射。',
-      ids: ['C04', 'C05', 'P01', 'P02']
+      "title": "Python Connector ↔ Pi",
+      "tag": "ACP STDIO",
+      "paths": [
+        "PiProvider",
+        "AcpRuntime",
+        "@openma/pi-acp"
+      ],
+      "text": "上游承担通用 ACP 交互；Pi 接入按会话报告能力并回传执行事件。",
+      "ids": [
+        "P01",
+        "P03",
+        "P04"
+      ]
     }
   ],
   failureCases: [
-    { title: '授权缺失或变化', text: '提示桌面确认，确认前的模型调用计数为零。', ids: ['P02', 'D04'] },
-    { title: '重复请求', text: '按原任务身份和请求标识校验结果，连续重试及双端操作只启动一次。', ids: ['C03', 'P05'] },
-    { title: '重连与事件补读', text: '重新连接后查询原任务，按游标恢复允许同步的状态和事件。', ids: ['P04', 'D03'] },
-    { title: '本地服务退出', text: '手机显示真实离线或故障状态。服务恢复后核对快照、预算和结果。', ids: ['P03', 'D01', 'D03'] },
-    { title: '无权限设备与未授权内容', text: '按任务授权校验访问，凭据及未授权源码和原始证据留在执行机。', ids: ['C01', 'C05', 'D04'] }
+    {
+      "title": "重复消息与重复摄取",
+      "text": "相同 clientMessageId 和相同同步批次重复到达时，消息、Timeline 条目与 revision 符合基线去重语义。",
+      "ids": [
+        "S10",
+        "P05"
+      ]
+    },
+    {
+      "title": "接受数据后再推进检查点",
+      "text": "服务端拒收、超时或暂时离线时，不保存覆盖这些数据的同步检查点，重连后可重发与校准。",
+      "ids": [
+        "P05",
+        "S10"
+      ]
+    },
+    {
+      "title": "响应丢失与执行结果不明",
+      "text": "操作可能已送达 DSH 时，先读取原生状态和回执；修改操作不因网络超时盲目重发。",
+      "ids": [
+        "S07",
+        "P05"
+      ]
+    },
+    {
+      "title": "单个坏会话的隔离",
+      "text": "一个损坏历史、超大快照或失败会话不阻塞其余会话；已同步历史不会被空快照错误覆盖。",
+      "ids": [
+        "S10",
+        "D08"
+      ]
+    },
+    {
+      "title": "重连与迟到响应",
+      "text": "旧连接、旧实例和过期租约失效后，迟到响应不覆盖新的连接与 Runtime 状态。",
+      "ids": [
+        "S07",
+        "S19"
+      ]
+    },
+    {
+      "title": "双端审批竞争",
+      "text": "手机与 Web 同时回应相同审批时，按照 Runtime 当前 notice 和有效能力裁决，过期请求不生效。",
+      "ids": [
+        "S12",
+        "S13"
+      ]
+    },
+    {
+      "title": "各进程分别重启",
+      "text": "分别重启 Server、Connector、DSH 与 Router，校准后历史、当前状态和检查点一致。",
+      "ids": [
+        "P05",
+        "D05"
+      ]
+    },
+    {
+      "title": "容器重建与本机身份",
+      "text": "设备凭据、检查点、工作目录持久保存；遗留 PID 或 PID 复用不会造成错误接管。",
+      "ids": [
+        "D02",
+        "D04"
+      ]
+    },
+    {
+      "title": "文件与终端授权",
+      "text": "校验资源所属用户、路径根目录、符号链接、附件票据和终端权限，防止跨资源访问。",
+      "ids": [
+        "S16",
+        "S17"
+      ]
+    },
+    {
+      "title": "慢消费者与积压",
+      "text": "限制 RPC 并发、同步积压、日志缓冲和终端输出；压力下仍可诊断并清理资源。",
+      "ids": [
+        "S07",
+        "D08"
+      ]
+    },
+    {
+      "title": "真实手机最终验收",
+      "text": "记录手机系统、App、DSH、插件、Go 后端和部署版本，实际完成登录、会话、审批、文件与恢复操作。",
+      "ids": [
+        "B01",
+        "D09"
+      ]
+    }
   ],
   sources: [
-    { label: 'pi-audit-harness 项目', url: target },
-    { label: '本地业务服务', url: target + '/blob/' + targetSnapshot + '/desktop/src/service/http-server.ts' },
-    { label: 'Pi SDK 会话入口', url: target + '/blob/' + targetSnapshot + '/desktop/src/service/pi-session-factory.ts' },
-    { label: '上游 Connector', url: upstreamFiles + '/connector/README.md' },
-    { label: '上游 Runtime 扩展', url: upstreamFiles + '/connector/connector/runtimes/acp/README.md' }
-  ]
+    {
+      "label": "上游源码快照",
+      "url": "https://github.com/anywhere-labs/Agents-Anywhere/tree/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008"
+    },
+    {
+      "label": "Server 架构",
+      "url": "https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/docs/server-architecture.md"
+    },
+    {
+      "label": "DSH Bridge 2.0",
+      "url": "https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/contracts/dsh-bridge/2.0/README.md"
+    },
+    {
+      "label": "本机记录与启动协议",
+      "url": "https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/contracts/local-machine/2.0/README.md"
+    },
+    {
+      "label": "Runtime Control 2.1",
+      "url": "https://github.com/anywhere-labs/Agents-Anywhere/blob/98dd0e6e5ddc1c5d1b35e1aaea6b5d00bdfd7008/contracts/runtime-control/2.1/README.md"
+    },
+    {
+      "label": "Python ACP 与 Pi 实现",
+      "url": "https://github.com/anywhere-labs/Agents-Anywhere/blob/856026d/docs/runtime-protocol/acp-runtime-implementation.md"
+    }
+  ],
 };
 
 await writeFile(new URL('docs/prd/requirements.json', root), JSON.stringify(data, null, 2) + '\n');
-console.log('Synced ' + requirements.length + ' requirements across ' + modules.length + ' modules.');
+console.log(`Synced ${requirements.length} requirements across ${modules.length} modules.`);
